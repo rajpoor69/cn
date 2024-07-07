@@ -1,59 +1,127 @@
 SERVER
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <unistd.h>
-void main() {
-  int server, newSock;
-  char buffer[1024];
-  struct sockaddr_in servAddr;
-  struct sockaddr_storage store;
-  socklen_t addrSize;
-  server = socket(AF_INET, SOCK_STREAM, 0);
-  servAddr.sin_family = AF_INET;
-  servAddr.sin_port = htons(6265);
-  servAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  bind(server, (struct sockaddr *)&servAddr, sizeof(servAddr));
-  if (listen(server, 5) == 0)
-    printf("Listening\n");
-  else
-    printf("Error\n");
-  newSock = accept(server, (struct sockaddr *)&store, &addrSize);
-  recv(newSock, buffer, 1024, 0);
-  printf("2.Data Received: %s", buffer);
-  strcpy(buffer, "Hi This is Server\n");
-  printf("3.Sending Data to client...\n");
-  send(newSock, buffer, 19, 0);
-  close(newSock);
-  close(server);
+#include <arpa/inet.h>
+
+#define MAX 80
+#define PORT 8081
+
+void chat(int connfd) {
+    char buff[MAX];
+    while (1) {
+        memset(buff, 0, MAX);
+        read(connfd, buff, sizeof(buff));
+        printf("From Client: %sTo Client: ", buff);
+        memset(buff, 0, MAX);
+        fgets(buff, MAX, stdin);
+        write(connfd, buff, strlen(buff) + 1);
+        if (strncmp("exit", buff, 4) == 0) {
+            printf("Server Exit...\n");
+            break;
+        }
+    }
+}
+
+int main() {
+    int sockfd, connfd;
+    struct sockaddr_in servaddr, cli;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+    printf("Socket successfully created\n");
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = INADDR_ANY;
+    servaddr.sin_port = htons(PORT);
+
+    if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) {
+        perror("Socket bind failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    printf("Socket successfully binded\n");
+
+    if (listen(sockfd, 5) != 0) {
+        perror("Listen failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    printf("Server listening\n");
+
+    socklen_t len = sizeof(cli);
+    connfd = accept(sockfd, (struct sockaddr*)&cli, &len);
+    if (connfd < 0) {
+        perror("Server accept failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    printf("Server accepted the client\n");
+
+    chat(connfd);
+
+    close(sockfd);
+    return 0;
 }
 
 CLIENT
 
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <unistd.h>
-void main() {
-  int client;
-  char buffer[1024];
-  struct sockaddr_in servAddr;
-  socklen_t addrSize;
-  client = socket(AF_INET, SOCK_STREAM, 0);
-  servAddr.sin_family = AF_INET;
-  servAddr.sin_port = htons(6265);
-  servAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  connect(client, (struct sockaddr *)&servAddr, sizeof(servAddr));
-  printf("1. Sending data to server...\n");
-  // Additional code for data exchange
-  strcpy(buffer, "Hi This is client\n");
-  send(client, buffer, 19, 0);
-  recv(client, buffer, 1024, 0);
-  printf("4. Data received: %s", buffer);
-  close(client);
+#include <arpa/inet.h>
+
+#define MAX 80
+#define PORT 8081
+
+void chat(int sockfd) {
+    char buff[MAX];
+    while (1) {
+        memset(buff, 0, MAX);
+        printf("To Server: ");
+        fgets(buff, MAX, stdin);
+        write(sockfd, buff, strlen(buff) + 1);
+        memset(buff, 0, MAX);
+        read(sockfd, buff, sizeof(buff));
+        printf("From Server: %s", buff);
+        if (strncmp(buff, "exit", 4) == 0) {
+            printf("Client Exit...\n");
+            break;
+        }
+    }
+}
+
+int main() {
+    int sockfd;
+    struct sockaddr_in servaddr;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+    printf("Socket successfully created\n");
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    servaddr.sin_port = htons(PORT);
+
+    if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) {
+        perror("Connection with the server failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    printf("Connected to the server\n");
+
+    chat(sockfd);
+    close(sockfd);
+    return 0;
 }
