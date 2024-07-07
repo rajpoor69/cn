@@ -1,58 +1,49 @@
+// Distance Vector Routing
 #include <stdio.h>
-#include <stdlib.h>
-#include <limits.h>
-
-struct Link {
-  int hop, dest, wt;
-};
-struct Network {
-  int H, L;
-  struct Link * link;
-};
-int main() {
-  int H, L, S, i, j;
-  printf("Enter Number of Hops: ");
-  scanf("%d", & H);
-  printf("Enter Number of Links: ");
-  scanf("%d", & L);
-  printf("Enter Source Node: ");
-  scanf("%d", & S);
-  struct Network * n = (struct Network * ) malloc(sizeof(struct Network));
-  n -> H = H;
-  n -> L = L;
-  n -> link = (struct Link * ) malloc(L * sizeof(struct Link));
-  int * dist = (int * ) malloc(H * sizeof(int));
-  for (i = 0; i < H; i++) {
-    dist[i] = INT_MAX;
-  }
-  dist[S] = 0;
-  for (i = 0; i < L; i++) {
-    printf("\nLink %d: enter source, destination and weight\n", i + 1);
-    scanf("%d", & n -> link[i].hop);
-    scanf("%d", & n -> link[i].dest);
-    scanf("%d", & n -> link[i].wt);
-  }
-  for (i = 0; i < H; i++) {
-    for (j = 0; j < L; j++) {
-      int u = n -> link[j].hop;
-      int v = n -> link[j].dest;
-      int wt = n -> link[j].wt;
-      if (dist[u] != INT_MAX && dist[u] + wt < dist[v])
-        dist[v] = dist[u] + wt;
+struct node
+{
+    unsigned dist[20];
+    unsigned from[20];
+} rt[10];
+int main()
+{
+    int costmat[20][20];
+    int nodes, i, j, k, count = 0;
+    printf("\n Distance Vector Routing");
+    printf("\n\nEnter the number of nodes : ");
+    scanf("%d", &nodes); // Enter the nodes
+    printf("\nEnter the cost matrix :\n");
+    for (i = 0; i < nodes; i++)
+    {
+        for (j = 0; j < nodes; j++)
+        {
+            scanf("%d", &costmat[i][j]);
+            costmat[i][i] = 0;
+            rt[i].dist[j] = costmat[i][j]; 
+                rt[i].from[j] = j;
+        }
     }
-    for (i = 0; i < L; i++) {
-      int u = n -> link[i].hop;
-      int v = n -> link[i].dest;
-      int wt = n -> link[i].wt;
-      if (dist[u] != INT_MAX && dist[u] + wt < dist[v])
-        printf("Network contains negative weight cycle\n");
+    do
+    {
+        count = 0;
+        for (i = 0; i < nodes; i++) 
+            for (j = 0; j < nodes; j++)
+                for (k = 0; k < nodes; k++)
+                    if (rt[i].dist[j] > costmat[i][k] + rt[k].dist[j])
+                    { 
+                        rt[i].dist[j] = costmat[i][k] + rt[k].dist[j];
+                        rt[i].from[j] = k;
+                        count++;
+                    }
+    } while (count != 0);
+    for (i = 0; i < nodes; i++)
+    {
+        printf("\n\nFor router %d:\n", i + 1);
+        for (j = 0; j < nodes; j++)
+        {
+            printf("\t\nnode %d via %d distance %d ", j + 1, rt[i].from[j] + 1,
+                   rt[i].dist[j]);
+        }
     }
-  }
-  printf("\nHop\tDistance from Source\n");
-  for (i = 0; i < H; i++)
-    printf("%d\t%d\n", i, dist[i]);
-  free(n -> link);
-  free(n);
-  free(dist);
-  return 0;
+    printf("\n\n");
 }
