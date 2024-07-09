@@ -6,38 +6,44 @@ CLIENT
 #include <unistd.h>
 #include <arpa/inet.h>
 
-#define PORT 7000
-#define BUFFER_SIZE 2000
-#define SERVER_IP "127.0.0.1"
+#define PORT 8080
+#define MAXLINE 1024
 
 int main() {
-	
-    int client;
-    struct sockaddr_in servAddr;
-    char buffer[BUFFER_SIZE];
-    socklen_t addr_len = sizeof(servAddr);
+    int sockfd;
+    char buffer[MAXLINE];
+    struct sockaddr_in server_addr;
 
-    if ((client = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+    // Create socket
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     }
 
-    servAddr.sin_family = AF_INET;
-    servAddr.sin_port = htons(PORT);
-    inet_pton(AF_INET, SERVER_IP, &servAddr.sin_addr);
+    memset(&server_addr, 0, sizeof(server_addr));
 
-    printf("Enter message to server: ");
-    fgets(buffer, BUFFER_SIZE, stdin);
+    // Server information
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
 
-    if (sendto(client, buffer, strlen(buffer), 0, (struct sockaddr*)&servAddr, addr_len) < 0) {
-        perror("Message sending failed");
-        exit(EXIT_FAILURE);
-    }
+    int len, n;
+    
+    // Get user input
+    printf("Enter a string: ");
+    fgets(buffer, MAXLINE, stdin);
+    buffer[strcspn(buffer, "\n")] = '\0'; // Remove trailing newline character
 
-    recvfrom(client, buffer, BUFFER_SIZE, 0, NULL, NULL);
-    printf("Server response: %s\n", buffer);
+    // Send message to server
+    sendto(sockfd, buffer, strlen(buffer), MSG_CONFIRM, (const struct sockaddr *) &server_addr, sizeof(server_addr));
+    printf("Message sent to server: %s\n", buffer);
 
-    close(client);
+    // Receive server's response
+    n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *) &server_addr, &len);
+    buffer[n] = '\0';
+    printf("Server responded with length: %s\n", buffer);
+
+    close(sockfd);
     return 0;
 }
 
@@ -51,54 +57,51 @@ SERVER
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/socket.h>
 
-#define PORT 7000
-#define BUFFER_SIZE 2000
+#define PORT 8080
+#define MAXLINE 1024
 
 int main() {
-    int server;
-    struct sockaddr_in servAddr, clientAddr;
-    char buffer[BUFFER_SIZE];
-    socklen_t clientLen = sizeof(clientAddr);
-    ssize_t recv_len, send_len;
+    int sockfd;
+    char buffer[MAXLINE];
+    struct sockaddr_in server_addr, client_addr;
 
-    if ((server = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+    // Create socket
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
-        
     }
 
-    //memset(&servAddr, 0, sizeof(servAddr));
-    servAddr.sin_family = AF_INET;
-    servAddr.sin_addr.s_addr = INADDR_ANY;
-    servAddr.sin_port = htons(PORT);
+    memset(&server_addr, 0, sizeof(server_addr));
+    memset(&client_addr, 0, sizeof(client_addr));
 
-    if (bind(server, (struct sockaddr *) &servAddr, sizeof(servAddr)) < 0) {
+    // Server information
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    // Bind the socket with the server address
+    if (bind(sockfd, (const struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Bind failed");
-        close(server);
         exit(EXIT_FAILURE);
     }
 
-    printf("Server listening on port %d...\n", PORT);
+    int len, n;
+    len = sizeof(client_addr);
 
-    if ((recv_len = recvfrom(server, buffer, BUFFER_SIZE, 0, (struct sockaddr *) &clientAddr, &clientLen)) < 0) {
-        perror("Receive failed");
-        close(server);
-        exit(EXIT_FAILURE);
-    }
-    buffer[recv_len] = '\0';
+    // Receive message from client
+    n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *) &client_addr, &len);
+    buffer[n] = '\0';
+    printf("Client sent: %s\n", buffer);
 
-    printf("Message from client: %s\n", buffer);
+    // Calculate length of the received string
+    int length = strlen(buffer);
+    snprintf(buffer, MAXLINE, "%d", length);
 
-    if ((send_len = sendto(server, buffer, recv_len, 0, (struct sockaddr *) &clientAddr, clientLen)) != recv_len) {
-        perror("Send failed");
-        close(server);
-        exit(EXIT_FAILURE);
-    }
+    // Send length back to client
+    sendto(sockfd, buffer, strlen(buffer), MSG_CONFIRM, (const struct sockaddr *) &client_addr, len);
+    printf("Length sent to client: %s\n", buffer);
 
-    printf("Message sent back to client.\n");
-
-    close(server);
+    close(sockfd);
     return 0;
 }
