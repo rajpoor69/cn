@@ -5,68 +5,76 @@ SERVER
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/socket.h>
 
-#define MAX 80
-#define PORT 8081
-
-void chat(int connfd) {
-    char buff[MAX];
-    while (1) {
-        memset(buff, 0, MAX);
-        read(connfd, buff, sizeof(buff));
-        printf("From Client: %sTo Client: ", buff);
-        memset(buff, 0, MAX);
-        fgets(buff, MAX, stdin);
-        write(connfd, buff, strlen(buff) + 1);
-        if (strncmp("exit", buff, 4) == 0) {
-            printf("Server Exit...\n");
-            break;
-        }
-    }
-}
+#define PORT 7000
+#define BUFFER_SIZE 2000
 
 int main() {
-    int sockfd, connfd;
-    struct sockaddr_in servaddr, cli;
+    int server_fd, client_fd;
+    struct sockaddr_in servAddr, clientAddr;
+    char buffer[BUFFER_SIZE];
+    socklen_t clientLen = sizeof(clientAddr);
+    ssize_t recv_len, send_len;
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
+    // Create socket
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     }
-    printf("Socket successfully created\n");
 
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = INADDR_ANY;
-    servaddr.sin_port = htons(PORT);
+    // Prepare the sockaddr_in structure
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_addr.s_addr = INADDR_ANY;
+    servAddr.sin_port = htons(PORT);
 
-    if (bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) {
-        perror("Socket bind failed");
-        close(sockfd);
+    // Bind
+    if (bind(server_fd, (struct sockaddr*)&servAddr, sizeof(servAddr)) < 0) {
+        perror("Bind failed");
+        close(server_fd);
         exit(EXIT_FAILURE);
     }
-    printf("Socket successfully binded\n");
 
-    if (listen(sockfd, 5) != 0) {
+    // Listen
+    if (listen(server_fd, 5) < 0) {
         perror("Listen failed");
-        close(sockfd);
+        close(server_fd);
         exit(EXIT_FAILURE);
     }
-    printf("Server listening\n");
 
-    socklen_t len = sizeof(cli);
-    connfd = accept(sockfd, (struct sockaddr*)&cli, &len);
-    if (connfd < 0) {
-        perror("Server accept failed");
-        close(sockfd);
+    printf("Server listening on port %d...\n", PORT);
+
+    // Accept an incoming connection
+    if ((client_fd = accept(server_fd, (struct sockaddr*)&clientAddr, &clientLen)) < 0) {
+        perror("Accept failed");
+        close(server_fd);
         exit(EXIT_FAILURE);
     }
-    printf("Server accepted the client\n");
 
-    chat(connfd);
+    // Receive a message from client
+    if ((recv_len = recv(client_fd, buffer, BUFFER_SIZE, 0)) < 0) {
+        perror("Receive failed");
+        close(client_fd);
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+    buffer[recv_len] = '\0';
 
-    close(sockfd);
+    printf("Message from client: %s\n", buffer);
+
+    // Send the same message back to client
+    if ((send_len = send(client_fd, buffer, recv_len, 0)) != recv_len) {
+        perror("Send failed");
+        close(client_fd);
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Message sent back to client.\n");
+
+    close(client_fd);
+    close(server_fd);
     return 0;
 }
 
@@ -78,50 +86,54 @@ CLIENT
 #include <unistd.h>
 #include <arpa/inet.h>
 
-#define MAX 80
-#define PORT 8081
-
-void chat(int sockfd) {
-    char buff[MAX];
-    while (1) {
-        memset(buff, 0, MAX);
-        printf("To Server: ");
-        fgets(buff, MAX, stdin);
-        write(sockfd, buff, strlen(buff) + 1);
-        memset(buff, 0, MAX);
-        read(sockfd, buff, sizeof(buff));
-        printf("From Server: %s", buff);
-        if (strncmp(buff, "exit", 4) == 0) {
-            printf("Client Exit...\n");
-            break;
-        }
-    }
-}
+#define PORT 7000
+#define BUFFER_SIZE 2000
+#define SERVER_IP "127.0.0.1"
 
 int main() {
-    int sockfd;
-    struct sockaddr_in servaddr;
+    int client_fd;
+    struct sockaddr_in servAddr;
+    char buffer[BUFFER_SIZE];
+    ssize_t send_len, recv_len;
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
+    // Create socket
+    if ((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     }
-    printf("Socket successfully created\n");
 
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    servaddr.sin_port = htons(PORT);
+    // Prepare the sockaddr_in structure
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(PORT);
+    inet_pton(AF_INET, SERVER_IP, &servAddr.sin_addr);
 
-    if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0) {
-        perror("Connection with the server failed");
-        close(sockfd);
+    // Connect to the server
+    if (connect(client_fd, (struct sockaddr*)&servAddr, sizeof(servAddr)) < 0) {
+        perror("Connect failed");
+        close(client_fd);
         exit(EXIT_FAILURE);
     }
-    printf("Connected to the server\n");
 
-    chat(sockfd);
-    close(sockfd);
+    // Get message to send to server
+    printf("Enter message to server: ");
+    fgets(buffer, BUFFER_SIZE, stdin);
+
+    // Send message to server
+    if ((send_len = send(client_fd, buffer, strlen(buffer), 0)) < 0) {
+        perror("Message sending failed");
+        close(client_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Receive message from server
+    if ((recv_len = recv(client_fd, buffer, BUFFER_SIZE, 0)) < 0) {
+        perror("Receive failed");
+        close(client_fd);
+        exit(EXIT_FAILURE);
+    }
+    buffer[recv_len] = '\0';
+    printf("Server response: %s\n", buffer);
+
+    close(client_fd);
     return 0;
 }
